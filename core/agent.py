@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from ollama import Client
 from core.tools import tools_schema, search_company_documents, search_org_chart
 from core.schemas import AgentOutput
+from pydantic import ValidationError
 
 # Load environment variables
 load_dotenv()
@@ -94,13 +95,22 @@ def run_autonomous_agent(user_prompt: str) -> AgentOutput:
     # =========================================================
     print("   [AGENT] Synthesizing final structured JSON output...")
     
-    # Instruct the LLM to format its findings
+    # Explicitly stringify the schema so the model can read it in the prompt
+    schema_string = json.dumps(AgentOutput.model_json_schema(), indent=2)
+    
+    # Reinforce the prompt with explicit instructions and the schema
     messages.append({
         "role": "user",
-        "content": "You have gathered the necessary information. Now, synthesize your final answer into the exact JSON schema required."
+        "content": (
+            "You have gathered the necessary information. Now, synthesize your final answer.\n"
+            "CRITICAL: You MUST format your response using EXACTLY this JSON schema:\n"
+            f"{schema_string}\n\n"
+            "Do NOT invent your own keys like 'rules'. You must use 'conversational_reply', "
+            "'documents_cited', and 'suggested_contacts'."
+        )
     })
     
-    # We call the model again, this time forcing the Pydantic schema format
+    # We call the model again, keeping the format constraint as a backup
     synth_response = client.chat(
         model="qwen3-next:80b-cloud", 
         messages=messages,
@@ -109,7 +119,7 @@ def run_autonomous_agent(user_prompt: str) -> AgentOutput:
     
     raw_content = synth_response['message']['content'].strip()
     
-    # Defensive parsing: Clean markdown code blocks if the model wrapped the JSON
+    # Defensive parsing: Clean markdown code blocks
     if raw_content.startswith("```json"):
         raw_content = raw_content[7:-3].strip()
     elif raw_content.startswith("```"):
@@ -119,11 +129,12 @@ def run_autonomous_agent(user_prompt: str) -> AgentOutput:
     try:
         parsed_json = json.loads(raw_content)
         return AgentOutput(**parsed_json)
-    except json.JSONDecodeError as e:
-        print(f"   [ERROR] Failed to parse final output: {e}")
+    # CATCH BOTH JSON ERRORS AND PYDANTIC VALIDATION ERRORS!
+    except (json.JSONDecodeError, ValidationError) as e:
+        print(f"   [ERROR] Failed to parse or validate final output: {e}")
         print(f"   [DEBUG RAW OUTPUT] {raw_content}")
         
-        # Graceful fallback so the API doesn't crash entirely
+        # Graceful fallback so the API doesn't crash 
         return AgentOutput(
             conversational_reply="I found the information, but an error occurred while formatting it for the dashboard.",
             documents_cited=[],
