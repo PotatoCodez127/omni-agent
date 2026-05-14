@@ -29,12 +29,18 @@ def search_org_chart(target_entity: str) -> str:
         return f"Entity '{target_entity}' not found in the org chart."
         
     try:
-        # Perform a 2-hop extraction to find relevant connections (Phase 3 logic)
         undirected_G = org_graph.to_undirected()
         relevant_nodes = list(nx.single_source_shortest_path_length(undirected_G, target_entity, cutoff=2).keys())
         subgraph = org_graph.subgraph(relevant_nodes)
         
         context = []
+        
+        # EXTRACT NODE METADATA (Like Emails)
+        for node, data in subgraph.nodes(data=True):
+            if data.get('type') == 'Employee' and 'email' in data:
+                context.append(f"[INFO] {node}'s email is {data['email']}")
+        
+        # EXTRACT RELATIONSHIPS
         for source, target, data in subgraph.edges(data=True):
             rel = data['relation']
             context.append(f"- {source} {rel} {target}")
