@@ -23,7 +23,7 @@ This project integrates five advanced AI Engineering patterns into a single Fast
 * **Data Validation:** Pydantic
 
 ## Repository Structure
-
+```
 omni-agent/
 │
 ├── database/
@@ -41,6 +41,7 @@ omni-agent/
 ├── main.py                   # FastAPI application router
 ├── requirements.txt          
 └── .env                      # API Keys & Environment Variables
+```
 
 ## Setup Instructions
 
